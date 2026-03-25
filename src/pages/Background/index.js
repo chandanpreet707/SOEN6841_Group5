@@ -5,7 +5,7 @@ const rateLimiter = {
   canPerformAction() {
     const now = Date.now();
     const oneMinuteAgo = now - 60000;
-    this.actions = this.actions.filter(time => time > oneMinuteAgo);
+    this.actions = this.actions.filter((time) => time > oneMinuteAgo);
     if (this.actions.length >= this.maxActionsPerMinute) {
       return false;
     }
@@ -16,9 +16,9 @@ const rateLimiter = {
   getRemainingActions() {
     const now = Date.now();
     const oneMinuteAgo = now - 60000;
-    this.actions = this.actions.filter(time => time > oneMinuteAgo);
+    this.actions = this.actions.filter((time) => time > oneMinuteAgo);
     return this.maxActionsPerMinute - this.actions.length;
-  }
+  },
 };
 
 const payloadValidator = {
@@ -37,8 +37,18 @@ const payloadValidator = {
   ],
 
   isSafe(payload, targetHost) {
-    const sanctionedLabs = ['*', 'dvwa', 'localhost', '127.0.0.1', 'google', 'webgoat', 'hackazon'];
-    const isSanctioned = sanctionedLabs.includes('*') || sanctionedLabs.some(lab => targetHost.includes(lab));
+    const sanctionedLabs = [
+      '*',
+      'dvwa',
+      'localhost',
+      '127.0.0.1',
+      'google',
+      'webgoat',
+      'hackazon',
+    ];
+    const isSanctioned =
+      sanctionedLabs.includes('*') ||
+      sanctionedLabs.some((lab) => targetHost.includes(lab));
 
     if (isSanctioned) {
       return { safe: true, reason: 'Sanctioned lab target' };
@@ -48,13 +58,13 @@ const payloadValidator = {
       if (pattern.test(payload)) {
         return {
           safe: false,
-          reason: `Dangerous pattern detected: ${pattern.toString()}`
+          reason: `Dangerous pattern detected: ${pattern.toString()}`,
         };
       }
     }
 
     return { safe: true, reason: 'Passed validation' };
-  }
+  },
 };
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
@@ -64,7 +74,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     sendResponse({
       allowed: canPerform,
       remaining: remaining,
-      message: canPerform ? 'Action allowed' : 'Rate limit exceeded'
+      message: canPerform ? 'Action allowed' : 'Rate limit exceeded',
     });
     return true;
   }
@@ -77,15 +87,18 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 });
 
 chrome.runtime.onInstalled.addListener(() => {
-  chrome.storage.local.get(['allowlist', 'dryRunMode', 'auditLog'], (result) => {
-    if (!result.allowlist) {
-      chrome.storage.local.set({
-        allowlist: ['*'],
-        dryRunMode: true,
-        auditLog: []
-      });
+  chrome.storage.local.get(
+    ['allowlist', 'dryRunMode', 'auditLog'],
+    (result) => {
+      if (!result.allowlist) {
+        chrome.storage.local.set({
+          allowlist: ['*'],
+          dryRunMode: true,
+          auditLog: [],
+        });
+      }
     }
-  });
+  );
 });
 
 chrome.storage.local.get(['dryRunMode'], (result) => {
