@@ -1,114 +1,167 @@
 #!/usr/bin/env node
-/*
- Simple local proxy for Ollama API to work around browser/extension Origin restrictions.
-
- Usage:
-   node scripts/ollama-proxy.js
-
- Options via env:
-   PROXY_PORT=5000
-   OLLAMA_BASE=http://127.0.0.1:11434
-
- Then set the extension's Ollama Base URL to http://127.0.0.1:5000
-*/
+/**
+ * Local CORS proxy for Ollama API.
+ *
+ * Forwards /api/* requests to an Ollama instance, stripping
+ * origin/referer headers and injecting permissive CORS headers
+ * so browser extensions can talk to Ollama without restrictions.
+ *
+ * Usage:
+ *   node scripts/ollama-proxy.js [port]
+ *
+ * Environment variables:
+ *   PROXY_PORT   – listen port (default: 5000)
+ *   OLLAMA_BASE  – upstream Ollama URL (default: http://127.0.0.1:11434)
+ *
+ * Then point the extension's Ollama Base URL at http://127.0.0.1:<port>
+ */
 
 const http = require('http');
 const https = require('https');
 const { URL } = require('url');
 
-let PORT = parseInt(process.env.PROXY_PORT || process.argv[2] || '5000', 10);
+// ── Configuration ───────────────────────────────────────────────────────────
+
 const TARGET_BASE = process.env.OLLAMA_BASE || 'http://127.0.0.1:11434';
 const TARGET = new URL(TARGET_BASE);
-const AGENTS = {
-  'http:': new http.Agent({ keepAlive: false }),
-  'https:': new https.Agent({ keepAlive: false })
-};
+const IS_HTTPS = TARGET.protocol === 'https:';
+const TRANSPORT = IS_HTTPS ? https : http;
+const AGENT = IS_HTTPS
+  ? new https.Agent({ keepAlive: false })
+  : new http.Agent({ keepAlive: false });
 
-function setCors(res) {
+const MAX_PORT_RETRIES = 10;
+const REQUEST_TIMEOUT_MS = 120_000;
+
+let port = parseInt(process.env.PROXY_PORT || process.argv[2] || '5000', 10);
+let retries = 0;
+
+// ── Helpers ─────────────────────────────────────────────────────────────────
+
+function log(msg) {
+  console.log(`[ollama-proxy] ${msg}`);
+}
+
+function warn(msg) {
+  console.warn(`[ollama-proxy] ${msg}`);
+}
+
+function setCorsHeaders(res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', '*');
 }
 
-function createServer() {
-  const server = http.createServer((req, res) => {
-  // CORS preflight
+function sendJson(res, statusCode, body) {
+  setCorsHeaders(res);
+  res.writeHead(statusCode, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify(body));
+}
+
+function buildProxyOptions(req, targetUrl) {
+  const headers = { ...req.headers };
+  delete headers.origin;
+  delete headers.referer;
+  headers.host = TARGET.host;
+  headers.connection = 'close';
+
+  return {
+    protocol: TARGET.protocol,
+    hostname: TARGET.hostname,
+    port: TARGET.port || (IS_HTTPS ? 443 : 80),
+    method: req.method,
+    path: targetUrl.pathname + targetUrl.search,
+    headers,
+    agent: AGENT,
+    timeout: REQUEST_TIMEOUT_MS,
+  };
+}
+
+function sanitizeResponseHeaders(proxyRes) {
+  const headers = { ...proxyRes.headers };
+  delete headers['content-security-policy'];
+  delete headers['content-security-policy-report-only'];
+  return headers;
+}
+
+// ── Request handler ─────────────────────────────────────────────────────────
+
+function handleRequest(req, res) {
   if (req.method === 'OPTIONS') {
-    setCors(res);
-    res.writeHead(200);
+    setCorsHeaders(res);
+    res.writeHead(204);
     res.end();
     return;
   }
 
-  // Only forward /api/*; anything else returns basic info
   if (!req.url.startsWith('/api/')) {
-    setCors(res);
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ ok: true, message: 'Ollama proxy alive', target: TARGET_BASE }));
+    sendJson(res, 200, { ok: true, message: 'Ollama proxy alive', target: TARGET_BASE });
     return;
   }
 
   const targetUrl = new URL(req.url, TARGET_BASE);
-  const isHttps = TARGET.protocol === 'https:';
-  const transport = isHttps ? https : http;
+  const options = buildProxyOptions(req, targetUrl);
 
-  // Clone and sanitize headers
-  const headers = { ...req.headers };
-  delete headers['origin'];
-  delete headers['referer'];
-  headers['host'] = TARGET.host;
-  headers['connection'] = 'close';
+  const proxyReq = TRANSPORT.request(options, (proxyRes) => {
+    setCorsHeaders(res);
 
-  const options = {
-    protocol: TARGET.protocol,
-    hostname: TARGET.hostname,
-    port: TARGET.port || (isHttps ? 443 : 80),
-    method: req.method,
-    path: targetUrl.pathname + targetUrl.search,
-    headers,
-    agent: AGENTS[TARGET.protocol]
-  };
+    const headers = sanitizeResponseHeaders(proxyRes);
+    for (const [key, value] of Object.entries(headers)) {
+      try { res.setHeader(key, value); } catch {}
+    }
 
-  const proxyReq = transport.request(options, (proxyRes) => {
-    setCors(res);
-    // Pass through status and headers (with permissive CORS)
-    const respHeaders = { ...proxyRes.headers };
-    delete respHeaders['content-security-policy'];
-    delete respHeaders['content-security-policy-report-only'];
-    Object.entries(respHeaders).forEach(([k, v]) => {
-      try { res.setHeader(k, v); } catch (_) {}
-    });
     res.writeHead(proxyRes.statusCode || 502);
     proxyRes.pipe(res);
   });
 
+  proxyReq.on('timeout', () => {
+    proxyReq.destroy();
+    sendJson(res, 504, { ok: false, error: 'Gateway timeout' });
+  });
+
   proxyReq.on('error', (err) => {
-    setCors(res);
-    res.writeHead(502, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ ok: false, error: 'Proxy error', message: err.message }));
-  });
-
-  // Pipe request body
-  req.pipe(proxyReq);
-  });
-
-  server.on('error', (err) => {
-    if (err && err.code === 'EADDRINUSE') {
-      const next = PORT + 1;
-      console.warn(`[ollama-proxy] Port ${PORT} in use, retrying on ${next}...`);
-      PORT = next;
-      setTimeout(() => {
-        try { server.close(); } catch (_) {}
-        createServer();
-      }, 100);
-    } else {
-      console.error('[ollama-proxy] Server error:', err);
+    if (!res.headersSent) {
+      sendJson(res, 502, { ok: false, error: 'Proxy error', message: err.message });
     }
   });
 
-  server.listen(PORT, () => {
-    console.log(`[ollama-proxy] listening on http://127.0.0.1:${PORT} -> ${TARGET_BASE}`);
-  });
+  req.pipe(proxyReq);
 }
 
-createServer();
+// ── Server lifecycle ────────────────────────────────────────────────────────
+
+function startServer() {
+  const server = http.createServer(handleRequest);
+
+  server.on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+      if (retries >= MAX_PORT_RETRIES) {
+        console.error(`[ollama-proxy] Gave up after ${MAX_PORT_RETRIES} port retries.`);
+        process.exit(1);
+      }
+      retries++;
+      const next = port + 1;
+      warn(`Port ${port} in use, trying ${next}…`);
+      port = next;
+      server.close(() => startServer());
+      return;
+    }
+    console.error('[ollama-proxy] Server error:', err);
+    process.exit(1);
+  });
+
+  server.listen(port, () => {
+    log(`Listening on http://127.0.0.1:${port} → ${TARGET_BASE}`);
+  });
+
+  function shutdown() {
+    log('Shutting down…');
+    server.close(() => process.exit(0));
+    setTimeout(() => process.exit(1), 5_000);
+  }
+
+  process.on('SIGINT', shutdown);
+  process.on('SIGTERM', shutdown);
+}
+
+startServer();
