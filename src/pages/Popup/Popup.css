@@ -750,6 +750,11 @@ body {
   background: var(--si-red-50);
   border: 1px solid var(--si-red-200);
 }
+.si-hint--danger {
+  color: #991b1b;
+  background: #fff1f2;
+  border: 1px solid #fecdd3;
+}
 .si-hint--success {
   color: var(--si-green-700);
   background: var(--si-green-50);
@@ -896,6 +901,11 @@ body {
   color: #991b1b;
   background: var(--si-red-50);
   border: 1px solid var(--si-red-200);
+}
+.si-alert--warn {
+  color: #92400e;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
 }
 
 .si-input {

@@ -107,6 +107,12 @@ const Popup = () => {
     chrome.storage.local.set({ auditLog: newLog });
   };
 
+  const modeLabel = dryRunMode ? 'Dry Run' : 'Live Mode';
+  const runButtonLabel = dryRunMode ? 'Preview Test' : 'Run Live Test';
+  const payloadModeSummary = dryRunMode
+    ? 'Preview only: clicking the action button will not inject payloads into the page.'
+    : 'Live execution: clicking the action button will inject the selected payloads into the chosen fields.';
+
   const toggleSelection = (uid) => setSelectedIds(prev => {
     const s = new Set(prev);
     s.has(uid) ? s.delete(uid) : s.add(uid);
@@ -135,8 +141,17 @@ const Popup = () => {
   };
 
   const confirmAndExecute = (action, element, callback) => {
-    if (dryRunMode) { alert(`🔒 DRY RUN: Would execute ${action} on ${element.name || element.type}`); addToAuditLog(action, element, 'DRY_RUN'); return; }
-    setConfirmAction({ message: `Execute ${action} on "${element.name || element.type}"?`, onConfirm: callback });
+    if (dryRunMode) {
+      alert(
+        `Dry Run only.\n\nThis action was previewed but no payload was injected into the page.\n\nPlanned action: ${action}\nTarget: ${element.name || element.type}\n\nTurn off Dry Run Mode in Settings to perform a live test.`
+      );
+      addToAuditLog(action, element, 'DRY_RUN');
+      return;
+    }
+    setConfirmAction({
+      message: `Live test will inject payloads for ${action} on "${element.name || element.type}". Continue?`,
+      onConfirm: callback
+    });
   };
   const handleConfirm = () => { if (confirmAction?.onConfirm) confirmAction.onConfirm(); setConfirmAction(null); };
   const handleCancel = () => setConfirmAction(null);
@@ -283,7 +298,7 @@ const Popup = () => {
         </div>
         <div className={`si-mode-badge ${dryRunMode ? 'si-mode-dry' : 'si-mode-live'}`}>
           <span className="si-mode-dot" />
-          {dryRunMode ? 'DRY RUN' : 'LIVE'}
+          {modeLabel}
         </div>
       </header>
 
@@ -324,8 +339,12 @@ const Popup = () => {
                 {DEFAULT_VULNS.map(v => <option key={v.key} value={v.key}>{v.label}</option>)}
               </select>
               <button onClick={runVulnTest} disabled={!hostAllowed} className="si-btn-accent">
-                <RocketIcon />Run Test
+                <RocketIcon />{runButtonLabel}
               </button>
+            </div>
+
+            <div className={`si-hint ${dryRunMode ? 'si-hint--warn' : 'si-hint--danger'}`}>
+              <strong>{modeLabel}:</strong> {payloadModeSummary}
             </div>
 
             {elements.length > 0 && (
@@ -389,6 +408,11 @@ const Popup = () => {
         {activeTab === 'Payloads' && (
           <div className="si-pane">
             <div className="si-pane-title">Payload Source</div>
+            <div className={`si-hint ${dryRunMode ? 'si-hint--warn' : 'si-hint--danger'}`}>
+              {dryRunMode
+                ? 'Dry Run is ON. You can scan, select fields, and preview actions safely, but no payload will be inserted until Live Mode is enabled.'
+                : 'Live Mode is ON. The selected payload source will be used to inject values into the chosen page fields after confirmation.'}
+            </div>
 
             <label className={`si-source-card ${payloadSource === 'library' ? 'si-source-card--active' : ''}`}>
               <input type="radio" name="ps" value="library" checked={payloadSource === 'library'} onChange={e => setPayloadSource(e.target.value)} className="si-radio" />
@@ -505,15 +529,20 @@ const Popup = () => {
               <div className="si-card-row">
                 <div>
                   <div className="si-card-label">Dry Run Mode</div>
-                  <div className="si-card-desc">Simulate tests without modifying the page</div>
+                  <div className="si-card-desc">Preview actions safely without injecting any payload into the page</div>
                 </div>
                 <button onClick={toggleDryRun} className={`si-toggle ${dryRunMode ? 'si-toggle--on' : 'si-toggle--off'}`}>
                   <span className={`si-toggle-thumb ${dryRunMode ? 'si-toggle-thumb--on' : ''}`} />
                 </button>
               </div>
+              {dryRunMode && (
+                <div className="si-alert si-alert--warn">
+                  Dry Run is active. Scan and selection still work, but clicking the action button only previews what would happen.
+                </div>
+              )}
               {!dryRunMode && (
                 <div className="si-alert si-alert--danger">
-                  ⚠ Live mode — payloads will be injected into real page inputs
+                  Live Mode is active. Selected payloads will be injected into real page inputs after you confirm.
                 </div>
               )}
             </div>
