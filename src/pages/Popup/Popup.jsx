@@ -196,6 +196,28 @@ const Popup = () => {
     } finally { setLlmLoading(false); }
   };
 
+  const checkRateLimitBeforeLiveAction = async (actionLabel) => {
+    try {
+      const result = await new Promise((resolve) => {
+        chrome.runtime.sendMessage({ action: 'checkRateLimit' }, (response) => {
+          resolve(response || null);
+        });
+      });
+
+      if (!result?.allowed) {
+        alert(
+          `Rate limit reached.\n\nThe extension allows up to 20 live actions per minute.\nPlease wait a moment before trying "${actionLabel}" again.`
+        );
+        return false;
+      }
+
+      return true;
+    } catch {
+      alert('Unable to verify the rate limit right now. Please try again.');
+      return false;
+    }
+  };
+
   const runVulnTest = async () => {
     const vuln = DEFAULT_VULNS.find(v => v.key === selectedVuln);
     if (!vuln) return;
@@ -205,6 +227,11 @@ const Popup = () => {
     else if (payloadSource === 'llm' && llmPayload.trim()) payloads = [llmPayload.trim()];
 
     const executeAction = async () => {
+      const rateLimitOk = await checkRateLimitBeforeLiveAction(
+        payloadSource === 'file' && fileData ? 'file attachment' : `${vuln.label} test`
+      );
+      if (!rateLimitOk) return;
+
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       const pingOk = await new Promise(resolve => {
         chrome.tabs.sendMessage(tab.id, { action: 'ping' }, resp => resolve(Boolean(resp?.ok)));
