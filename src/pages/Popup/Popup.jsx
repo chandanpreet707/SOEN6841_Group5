@@ -61,6 +61,7 @@ const Popup = () => {
   const [ollamaModel, setOllamaModel] = useState('llama3');
   const [ollamaError, setOllamaError] = useState('');
   const [ollamaStatus, setOllamaStatus] = useState('');
+  const [ollamaChecking, setOllamaChecking] = useState(false);
   const [activeTab, setActiveTab] = useState('Scan');
   const [payloadHistory, setPayloadHistory] = useState([]);
   const extensionId = chrome?.runtime?.id || '<extension-id>';
@@ -78,17 +79,25 @@ const Popup = () => {
     (async () => {
       try {
         if (ollama) {
+          setOllamaChecking(true);
           ollama.setBaseUrl(ollamaUrl);
           ollama.setModel(ollamaModel);
           if (await ollama.checkAvailability()) {
             setOllamaAvailable(true);
             setOllamaError('');
+            setOllamaStatus('Ollama is reachable and ready for payload generation.');
           } else {
             setOllamaAvailable(false);
             setOllamaError(ollama?.getLastError?.() || '');
+            setOllamaStatus('Ollama is currently unavailable.');
           }
         }
-      } catch { setOllamaAvailable(false); }
+      } catch {
+        setOllamaAvailable(false);
+        setOllamaStatus('Ollama is currently unavailable.');
+      } finally {
+        setOllamaChecking(false);
+      }
     })();
   }, []);
 
@@ -722,12 +731,19 @@ const Popup = () => {
               <div className="si-card-row">
                 <div>
                   <div className="si-card-label">Ollama LLM</div>
-                  <div className="si-card-desc">Local AI for payload generation</div>
+                  <div className="si-card-desc">Local AI connection used to generate payload suggestions inside the popup</div>
                 </div>
                 <span className={`si-status-pill ${ollamaAvailable ? 'si-status-pill--on' : 'si-status-pill--off'}`}>
-                  {ollamaAvailable ? '● Online' : '○ Offline'}
+                  {ollamaChecking ? 'Checking' : ollamaAvailable ? '● Online' : '○ Offline'}
                 </span>
               </div>
+              {(!ollamaAvailable || ollamaChecking || !ollamaStatus) && (
+                <div className={`si-hint ${ollamaChecking ? 'si-hint--warn' : ollamaAvailable ? 'si-hint--success' : 'si-hint--warn'}`}>
+                  {ollamaChecking
+                    ? 'Checking the local Ollama service...'
+                    : ollamaStatus || 'Set the Ollama URL and model, then test the connection from this panel.'}
+                </div>
+              )}
               <div className="si-ollama-fields">
                 <input type="text" value={ollamaUrl} onChange={e => setOllamaUrl(e.target.value)} placeholder="http://127.0.0.1:11434" className="si-input si-input--mono" />
                 <input type="text" value={ollamaModel} onChange={e => setOllamaModel(e.target.value)} placeholder="llama3" className="si-input si-input--mono" />
@@ -735,15 +751,22 @@ const Popup = () => {
                   className="si-btn-outline"
                   onClick={async () => {
                     if (!ollama) return;
-                    ollama.setBaseUrl(ollamaUrl);
-                    ollama.setModel(ollamaModel);
-                    const ok = await ollama.checkAvailability();
-                    setOllamaAvailable(ok);
-                    setOllamaError(ollama.getLastError?.() || '');
-                    setOllamaStatus(ok ? '✅ Connected successfully' : '');
+                    try {
+                      setOllamaChecking(true);
+                      setOllamaStatus('');
+                      ollama.setBaseUrl(ollamaUrl);
+                      ollama.setModel(ollamaModel);
+                      const ok = await ollama.checkAvailability();
+                      setOllamaAvailable(ok);
+                      setOllamaError(ollama.getLastError?.() || '');
+                      setOllamaStatus(ok ? 'Connection successful. You can now generate payload suggestions from the Payloads tab.' : 'Connection failed. Review the message below and verify your Ollama service.');
+                    } finally {
+                      setOllamaChecking(false);
+                    }
                   }}
+                  disabled={ollamaChecking}
                 >
-                  Test Connection
+                  {ollamaChecking ? 'Checking...' : 'Test Connection'}
                 </button>
               </div>
               {ollamaAvailable && ollamaStatus && (
