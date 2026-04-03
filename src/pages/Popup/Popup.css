@@ -680,6 +680,26 @@ body {
   margin-top: 2px;
 }
 
+.si-payload-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.si-payload-meta-item {
+  font-size: 10px;
+  color: var(--si-slate-600);
+  background: var(--si-slate-50);
+  border: 1px solid var(--si-slate-200);
+  border-radius: var(--r-full);
+  padding: 4px 8px;
+}
+
+.si-payload-meta-item code {
+  font-family: monospace;
+  font-size: 10px;
+}
+
 .si-file-input {
   margin-top: 8px;
   font-size: 11px;
@@ -743,6 +763,13 @@ body {
 .si-textarea--compact {
   flex: 1;
   margin-top: 0;
+}
+
+.si-source-footnote {
+  margin-top: 6px;
+  font-size: 10px;
+  color: var(--si-slate-500);
+  line-height: 1.45;
 }
 
 .si-llm-row {

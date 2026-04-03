@@ -112,6 +112,10 @@ const Popup = () => {
   const payloadModeSummary = dryRunMode
     ? 'Preview only: clicking the action button will not inject payloads into the page.'
     : 'Live execution: clicking the action button will inject the selected payloads into the chosen fields.';
+  const manualPayloadCount = textPayload
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean).length;
 
   const toggleSelection = (uid) => setSelectedIds(prev => {
     const s = new Set(prev);
@@ -356,6 +360,20 @@ const Popup = () => {
   ];
 
   const hostAllowed = isHostAllowed(currentUrl);
+  const hasScannedElements = elements.length > 0;
+  const hasUsablePayload =
+    payloadSource === 'library' ||
+    (payloadSource === 'file' && Boolean(fileData)) ||
+    (payloadSource === 'text' && Boolean(textPayload.trim())) ||
+    (payloadSource === 'llm' && Boolean(llmPayload.trim()));
+  const runDisabledReason = !hostAllowed
+    ? 'Current host is not allowed'
+    : !hasScannedElements
+      ? 'Scan the page first'
+      : !hasUsablePayload
+        ? 'Choose or generate a payload first'
+        : '';
+  const canRunTest = hostAllowed && hasScannedElements && hasUsablePayload;
 
   return (
     <div className="si-root">
@@ -419,7 +437,7 @@ const Popup = () => {
               <select value={selectedVuln} onChange={e => setSelectedVuln(e.target.value)} className="si-select">
                 {DEFAULT_VULNS.map(v => <option key={v.key} value={v.key}>{v.label}</option>)}
               </select>
-              <button onClick={runVulnTest} disabled={!hostAllowed} className="si-btn-accent">
+              <button onClick={runVulnTest} disabled={!canRunTest} className="si-btn-accent" title={runDisabledReason}>
                 <RocketIcon />{runButtonLabel}
               </button>
             </div>
@@ -500,6 +518,12 @@ const Popup = () => {
                 ? 'Dry Run is ON. You can scan, select fields, and preview actions safely, but no payload will be inserted until Live Mode is enabled.'
                 : 'Live Mode is ON. The selected payload source will be used to inject values into the chosen page fields after confirmation.'}
             </div>
+            <div className="si-payload-meta">
+              <span className="si-payload-meta-item">Selected source: <strong>{payloadSource.toUpperCase()}</strong></span>
+              {payloadSource === 'text' && <span className="si-payload-meta-item">{manualPayloadCount} custom payload{manualPayloadCount === 1 ? '' : 's'}</span>}
+              {payloadSource === 'file' && fileName && <span className="si-payload-meta-item">Loaded file: <code>{fileName}</code></span>}
+              {payloadSource === 'llm' && llmPayload && <span className="si-payload-meta-item">Generated payload ready</span>}
+            </div>
 
             <label className={`si-source-card ${payloadSource === 'library' ? 'si-source-card--active' : ''}`}>
               <input type="radio" name="ps" value="library" checked={payloadSource === 'library'} onChange={e => setPayloadSource(e.target.value)} className="si-radio" />
@@ -537,6 +561,9 @@ const Popup = () => {
                   disabled={payloadSource !== 'text'}
                   className="si-textarea"
                 />
+                <div className="si-source-footnote">
+                  Each non-empty line is treated as a separate payload when you run the test.
+                </div>
               </div>
             </label>
 
