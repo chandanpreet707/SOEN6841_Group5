@@ -121,6 +121,7 @@ const Popup = () => {
   const selectAll = () => setSelectedIds(new Set(elements.map(e => e.uniqueId)));
   const clearSelection = () => setSelectedIds(new Set());
   const selectFilesOnly = () => setSelectedIds(new Set(elements.filter(e => e.type === 'file').map(e => e.uniqueId)));
+  const hasSelection = selectedIds.size > 0;
 
   const scanPage = async () => {
     if (!isHostAllowed(currentUrl)) { alert('⚠️ Host not in allowlist. Add it in Settings first.'); return; }
@@ -403,6 +404,13 @@ const Popup = () => {
 
         {activeTab === 'Scan' && (
           <div className="si-pane">
+            <div className="si-workflow-note">
+              <div className="si-workflow-note-title">Quick flow</div>
+              <div className="si-workflow-note-text">
+                Scan the current page, pick the fields you want to target, then switch to the payload tab if you want to change the input source before running a test.
+              </div>
+            </div>
+
             <div className="si-action-bar">
               <button onClick={scanPage} disabled={loading} className="si-btn-primary">
                 {loading ? <><span className="si-spinner" />Scanning…</> : <><ScanIcon />Scan Page</>}
@@ -424,7 +432,7 @@ const Popup = () => {
               <div className="si-stats-bar">
                 <span className="si-stats-label">
                   {elements.length} element{elements.length !== 1 ? 's' : ''}
-                  {selectedIds.size > 0 && <span className="si-stats-sel"> · {selectedIds.size} selected</span>}
+                  {hasSelection && <span className="si-stats-sel"> · {selectedIds.size} selected</span>}
                 </span>
                 <div className="si-stats-chips">
                   <button onClick={selectAll} className="si-chip">All</button>
@@ -434,11 +442,17 @@ const Popup = () => {
               </div>
             )}
 
+            {elements.length > 0 && !hasSelection && (
+              <div className="si-selection-hint">
+                No fields selected yet. Click one or more cards below to choose where the test should run.
+              </div>
+            )}
+
             {elements.length === 0 && !loading && (
               <div className="si-empty">
                 <div className="si-empty-icon">🔍</div>
-                <div className="si-empty-title">Ready to scan</div>
-                <div className="si-empty-sub">Click "Scan Page" to discover all form inputs on this page</div>
+                <div className="si-empty-title">No scan results yet</div>
+                <div className="si-empty-sub">Click "Scan Page" to discover the form fields available on the current page before choosing test targets.</div>
               </div>
             )}
 
