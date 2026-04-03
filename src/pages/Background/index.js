@@ -38,7 +38,6 @@ const payloadValidator = {
 
   isSafe(payload, targetHost) {
     const sanctionedLabs = [
-      '*',
       'dvwa',
       'localhost',
       '127.0.0.1',
@@ -46,9 +45,10 @@ const payloadValidator = {
       'webgoat',
       'hackazon',
     ];
-    const isSanctioned =
-      sanctionedLabs.includes('*') ||
-      sanctionedLabs.some((lab) => targetHost.includes(lab));
+    const normalizedHost = String(targetHost || '').toLowerCase();
+    const isSanctioned = sanctionedLabs.some((lab) =>
+      normalizedHost.includes(lab)
+    );
 
     if (isSanctioned) {
       return { safe: true, reason: 'Sanctioned lab target' };

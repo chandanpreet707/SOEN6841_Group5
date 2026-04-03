@@ -218,6 +218,43 @@ const Popup = () => {
     }
   };
 
+  const getValidationHost = () => {
+    try {
+      return new URL(currentUrl).hostname || currentUrl;
+    } catch {
+      return currentUrl;
+    }
+  };
+
+  const validatePayloadsBeforeLiveAction = async (payloads, actionLabel) => {
+    for (const payload of payloads) {
+      try {
+        const result = await new Promise((resolve) => {
+          chrome.runtime.sendMessage(
+            {
+              action: 'validatePayload',
+              payload,
+              host: getValidationHost(),
+            },
+            (response) => resolve(response || null)
+          );
+        });
+
+        if (!result?.safe) {
+          alert(
+            `Payload blocked before ${actionLabel}.\n\nReason: ${result?.reason || 'Validation failed'}\n\nBlocked payload:\n${payload}`
+          );
+          return false;
+        }
+      } catch {
+        alert('Unable to validate the selected payloads right now. Please try again.');
+        return false;
+      }
+    }
+
+    return true;
+  };
+
   const runVulnTest = async () => {
     const vuln = DEFAULT_VULNS.find(v => v.key === selectedVuln);
     if (!vuln) return;
@@ -231,6 +268,15 @@ const Popup = () => {
         payloadSource === 'file' && fileData ? 'file attachment' : `${vuln.label} test`
       );
       if (!rateLimitOk) return;
+
+      const needsPayloadValidation = payloadSource !== 'file' || !fileData;
+      if (needsPayloadValidation) {
+        const payloadsAreSafe = await validatePayloadsBeforeLiveAction(
+          payloads,
+          `${vuln.label} test`
+        );
+        if (!payloadsAreSafe) return;
+      }
 
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       const pingOk = await new Promise(resolve => {
