@@ -351,6 +351,16 @@ const Popup = () => {
       return c;
     });
   };
+  const formatHistoryTime = (timestamp) => {
+    const diffMs = Date.now() - new Date(timestamp).getTime();
+    const diffMinutes = Math.max(0, Math.floor(diffMs / 60000));
+    if (diffMinutes < 1) return 'just now';
+    if (diffMinutes < 60) return `${diffMinutes}m ago`;
+    const diffHours = Math.floor(diffMinutes / 60);
+    if (diffHours < 24) return `${diffHours}h ago`;
+    const diffDays = Math.floor(diffHours / 24);
+    return `${diffDays}d ago`;
+  };
 
   const TABS = [
     { key: 'Scan', label: 'Scan' },
@@ -602,6 +612,12 @@ const Popup = () => {
         {activeTab === 'History' && (
           <div className="si-pane">
             <div className="si-pane-title">Payload History</div>
+            <div className="si-workflow-note">
+              <div className="si-workflow-note-title">Reuse past payloads</div>
+              <div className="si-workflow-note-text">
+                History saves the most recent payload sets so you can quickly reinsert, copy, or compare what you tried during testing.
+              </div>
+            </div>
             {payloadHistory.length === 0 ? (
               <div className="si-empty">
                 <div className="si-empty-icon">📋</div>
@@ -616,7 +632,8 @@ const Popup = () => {
                       <div className="si-history-tags">
                         <span className="si-history-vuln">{h.vuln || 'custom'}</span>
                         <span className="si-history-src">{h.payloadSource}</span>
-                        <span className="si-history-time">{new Date(h.timestamp).toLocaleString()}</span>
+                        <span className="si-history-time">{formatHistoryTime(h.timestamp)}</span>
+                        <span className="si-history-count">{(h.payloads || []).length} payload{(h.payloads || []).length === 1 ? '' : 's'}</span>
                       </div>
                       <div className="si-history-actions">
                         <button onClick={() => insertHistoryEntry(h)} className="si-chip si-chip--primary">Insert</button>
@@ -638,6 +655,12 @@ const Popup = () => {
         {activeTab === 'Settings' && (
           <div className="si-pane">
             <div className="si-pane-title">Settings</div>
+            <div className="si-workflow-note">
+              <div className="si-workflow-note-title">Safe testing setup</div>
+              <div className="si-workflow-note-text">
+                Use this tab to control whether actions are previewed or executed live, manage allowed targets, and export the activity log for your test session.
+              </div>
+            </div>
 
             <div className="si-card">
               <div className="si-card-row">
@@ -663,7 +686,7 @@ const Popup = () => {
 
             <div className="si-card">
               <div className="si-card-label">Host Allowlist</div>
-              <div className="si-card-desc">Only test hosts in this list (use * for all)</div>
+              <div className="si-card-desc">Only pages matching these hosts can be scanned and tested. Use * only in controlled lab environments.</div>
               <div className="si-allowlist-input">
                 <input
                   type="text"
@@ -688,7 +711,7 @@ const Popup = () => {
             <div className="si-card si-card-row">
               <div>
                 <div className="si-card-label">Audit Log</div>
-                <div className="si-card-desc">{auditLog.length} entries recorded</div>
+                <div className="si-card-desc">{auditLog.length} entries recorded for this browser profile</div>
               </div>
               <button onClick={exportAuditLog} className="si-btn-outline">
                 📥 Export
