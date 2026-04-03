@@ -138,7 +138,7 @@ const Popup = () => {
   const hasSelection = selectedIds.size > 0;
 
   const scanPage = async () => {
-    if (!isHostAllowed(currentUrl)) { alert('⚠️ Host not in allowlist. Add it in Settings first.'); return; }
+    if (!isHostAllowed(currentUrl)) { alert('Host not in allowlist. Add it in Settings first.'); return; }
     setLoading(true);
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -311,19 +311,19 @@ const Popup = () => {
         chrome.tabs.sendMessage(tab.id, { action: 'attachFile', fileData, uniqueIds: targetIds }, response => {
           if (response?.success) {
             const ok = response.results.filter(r => r.success).length;
-            alert(`✅ File attached to ${ok}/${response.results.length} fields`);
+            alert(`File attached to ${ok}/${response.results.length} fields`);
             addToAuditLog('ATTACH_FILE', { file: fileData.name, results: response.results }, 'SUCCESS');
             savePayloadHistory({ timestamp: new Date().toISOString(), vuln: vuln.key, payloadSource, payloads: [fileData.name], targets: targetIds });
-          } else { alert('❌ Failed to attach file'); addToAuditLog('ATTACH_FILE', { file: fileData.name }, 'FAILED'); }
+          } else { alert('Failed to attach file'); addToAuditLog('ATTACH_FILE', { file: fileData.name }, 'FAILED'); }
         });
       } else {
         chrome.tabs.sendMessage(tab.id, { action: 'executeVulnTest', vulnKey: vuln.key, payloads, uniqueIds: targetIds }, response => {
           if (response?.success) {
             const ok = response.results.filter(r => r.success).length;
-            alert(`✅ ${vuln.label} applied to ${ok}/${response.results.length} fields`);
+            alert(`${vuln.label} applied to ${ok}/${response.results.length} fields`);
             addToAuditLog('VULN_TEST', { vuln: vuln.key, results: response.results }, 'SUCCESS');
             savePayloadHistory({ timestamp: new Date().toISOString(), vuln: vuln.key, payloadSource, payloads, targets: targetIds });
-          } else { alert('❌ Failed to execute test'); addToAuditLog('VULN_TEST', { vuln: vuln.key }, 'FAILED'); }
+          } else { alert('Failed to execute test'); addToAuditLog('VULN_TEST', { vuln: vuln.key }, 'FAILED'); }
         });
       }
     };
@@ -817,7 +817,7 @@ const Popup = () => {
       {confirmAction && (
         <div className="si-modal-overlay">
           <div className="si-modal">
-            <div className="si-modal-icon">⚠️</div>
+            <div className="si-modal-icon"></div>
             <h3 className="si-modal-title">Confirm Action</h3>
             <p className="si-modal-msg">{confirmAction.message}</p>
             <div className="si-modal-btns">

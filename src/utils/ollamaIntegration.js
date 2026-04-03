@@ -16,16 +16,16 @@ export default class OllamaPayloadAssistant {
       if (response.ok) {
         const data = await response.json();
         this.isAvailable = true;
-        console.log('✅ Ollama is available. Models:', data.models);
+        console.log('Ollama is available. Models:', data.models);
         this.lastErrorMessage = '';
         return true;
       } else {
-        console.log('⚠️ Ollama responded with status:', response.status, response.statusText);
+        console.log('Ollama responded with status:', response.status, response.statusText);
         this.isAvailable = false;
         this.lastErrorMessage = `HTTP ${response.status} ${response.statusText}`;
       }
     } catch (error) {
-      console.log('⚠️ Ollama not available:', error.message);
+      console.log('Ollama not available:', error.message);
       this.isAvailable = false;
       this.lastErrorMessage =
         error?.name === 'AbortError'

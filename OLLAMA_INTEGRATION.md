@@ -396,7 +396,7 @@ assistant.contextLength = 2048; // Reduce for faster responses
 
 ## Security Considerations
 
-### ⚠️ Important Warnings
+### Important Warnings
 
 1. **API Exposure**: Ollama runs on localhost:11434. Ensure it's not exposed to external networks.
 
@@ -410,14 +410,14 @@ assistant.contextLength = 2048; // Reduce for faster responses
 
 ### Best Practices
 
-✅ **DO:**
+**DO:**
 - Keep Ollama updated: `ollama update`
 - Use models from official Ollama library
 - Validate and sanitize all AI outputs
 - Test generated payloads in safe environments first
 - Log AI interactions for audit
 
-❌ **DON'T:**
+**DON'T:**
 - Expose Ollama to public networks
 - Use AI-generated payloads without review
 - Trust AI for critical security decisions
