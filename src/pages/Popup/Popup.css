@@ -779,6 +779,21 @@ body {
   align-items: flex-start;
 }
 
+.si-llm-result {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.si-llm-result-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--si-slate-500);
+}
+
 .si-status-pill {
   font-size: 10px;
   font-weight: 700;

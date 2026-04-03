@@ -54,6 +54,7 @@ const Popup = () => {
   const [textPayload, setTextPayload] = useState('');
   const [fileData, setFileData] = useState(null);
   const [llmPayload, setLlmPayload] = useState('');
+  const [llmExplanation, setLlmExplanation] = useState('');
   const [llmLoading, setLlmLoading] = useState(false);
   const [ollamaAvailable, setOllamaAvailable] = useState(false);
   const [ollama] = useState(() => { try { return new OllamaPayloadAssistant(); } catch { return null; } });
@@ -200,12 +201,19 @@ const Popup = () => {
     if (!ollama) return;
     const vuln = DEFAULT_VULNS.find(v => v.key === selectedVuln);
     setLlmLoading(true);
+    setLlmExplanation('');
+    setOllamaStatus('');
     try {
       const s = await ollama.generatePayload({ elementType: 'input', elementName: '*', testType: 'Payload Generation', vulnerability: vuln?.label || selectedVuln });
       setLlmPayload(s.payload || '');
+      setLlmExplanation(s.explanation || '');
       setPayloadSource('llm');
+      setOllamaError('');
+      setOllamaStatus('Generated a payload suggestion for the currently selected vulnerability type.');
     } catch (e) {
       const msg = ollama?.getLastError?.() || e?.message || 'LLM unavailable.';
+      setLlmPayload('');
+      setLlmExplanation('');
       alert(msg); setOllamaError(msg);
     } finally { setLlmLoading(false); }
   };
@@ -599,10 +607,18 @@ const Popup = () => {
                 {ollamaAvailable && (
                   <div className="si-llm-row">
                     <button onClick={fetchLlmSuggestion} disabled={llmLoading} className="si-btn-sm-primary">
-                      {llmLoading ? '⏳ Generating…' : '✨ Generate'}
+                      {llmLoading ? 'Generating...' : 'Generate Suggestion'}
                     </button>
-                    {llmPayload && (
-                      <textarea rows={2} value={llmPayload} readOnly className="si-textarea si-textarea--compact" />
+                  </div>
+                )}
+                {llmPayload && (
+                  <div className="si-llm-result">
+                    <div className="si-llm-result-label">Generated payload</div>
+                    <textarea rows={2} value={llmPayload} readOnly className="si-textarea si-textarea--compact" />
+                    {llmExplanation && (
+                      <div className="si-source-footnote">
+                        <strong>Why this was suggested:</strong> {llmExplanation}
+                      </div>
                     )}
                   </div>
                 )}
