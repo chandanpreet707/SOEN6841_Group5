@@ -6,7 +6,7 @@ export default class OllamaPayloadAssistant {
     this.baseUrl = baseUrl;
     this.model = 'llama3'; // Default model; change to 'mistral' or any installed tag
     this.isAvailable = false;
-  this.lastErrorMessage = '';
+    this.lastErrorMessage = '';
     this.checkAvailability();
   }
 
@@ -16,18 +16,21 @@ export default class OllamaPayloadAssistant {
       if (response.ok) {
         const data = await response.json();
         this.isAvailable = true;
-        console.log('✅ Ollama is available. Models:', data.models);
+        console.log('Ollama is available. Models:', data.models);
         this.lastErrorMessage = '';
         return true;
       } else {
-        console.log('⚠️ Ollama responded with status:', response.status, response.statusText);
+        console.log('Ollama responded with status:', response.status, response.statusText);
         this.isAvailable = false;
         this.lastErrorMessage = `HTTP ${response.status} ${response.statusText}`;
       }
     } catch (error) {
-      console.log('⚠️ Ollama not available:', error.message);
+      console.log('Ollama not available:', error.message);
       this.isAvailable = false;
-      this.lastErrorMessage = error.message;
+      this.lastErrorMessage =
+        error?.name === 'AbortError'
+          ? 'Connection to Ollama timed out while checking availability.'
+          : error.message;
     }
     return false;
   }
@@ -105,7 +108,10 @@ export default class OllamaPayloadAssistant {
       return this.parsePayloadResponse(full);
     } catch (error) {
       console.error('Payload generation error:', error);
-      this.lastErrorMessage = String(error?.message || error);
+      this.lastErrorMessage =
+        error?.name === 'AbortError'
+          ? 'Payload generation timed out after 20 seconds.'
+          : String(error?.message || error);
       throw error;
     }
   }

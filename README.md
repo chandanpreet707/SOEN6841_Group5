@@ -213,7 +213,7 @@ docker run -d -p 8080:80 vulnerables/web-dvwa
 
 ### Safe by Default
 
-✅ **Enabled by Default:**
+**Enabled by Default:**
 - Dry Run Mode
 - Host allowlist requirement
 - Confirmation dialogs
@@ -221,7 +221,7 @@ docker run -d -p 8080:80 vulnerables/web-dvwa
 - Rate limiting
 - Payload validation
 
-❌ **Never Automatic:**
+**Never Automatic:**
 - Form submission
 - Navigation
 - Cookie modification
@@ -230,14 +230,14 @@ docker run -d -p 8080:80 vulnerables/web-dvwa
 
 ### Authorization Required
 
-⚠️ **WARNING:** This tool is for **authorized security testing only**.
+ **WARNING:** This tool is for **authorized security testing only**.
 
 **Before using:**
-1. ✅ Ensure you have written permission to test
-2. ✅ Verify target is in your allowlist
-3. ✅ Enable Dry Run for exploration
-4. ✅ Document all activities in audit log
-5. ✅ Never test production without approval
+1. Ensure you have written permission to test
+2. Verify target is in your allowlist
+3. Enable Dry Run for exploration
+4. Document all activities in audit log
+5. Never test production without approval
 
 **Legal Notice:** Unauthorized testing may violate laws including the Computer Fraud and Abuse Act (CFAA), Computer Misuse Act (CMA), and other cybersecurity legislation.
 
@@ -445,7 +445,7 @@ Contributions welcome! Please:
 
 MIT License - see [LICENSE](LICENSE) file for details.
 
-## ⚠️ Disclaimer
+##  Disclaimer
 
 This tool is designed for **educational purposes and authorized security testing only**.
 

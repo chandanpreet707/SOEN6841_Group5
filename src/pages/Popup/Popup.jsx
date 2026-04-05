@@ -54,6 +54,7 @@ const Popup = () => {
   const [textPayload, setTextPayload] = useState('');
   const [fileData, setFileData] = useState(null);
   const [llmPayload, setLlmPayload] = useState('');
+  const [llmExplanation, setLlmExplanation] = useState('');
   const [llmLoading, setLlmLoading] = useState(false);
   const [ollamaAvailable, setOllamaAvailable] = useState(false);
   const [ollama] = useState(() => { try { return new OllamaPayloadAssistant(); } catch { return null; } });
@@ -61,6 +62,7 @@ const Popup = () => {
   const [ollamaModel, setOllamaModel] = useState('llama3');
   const [ollamaError, setOllamaError] = useState('');
   const [ollamaStatus, setOllamaStatus] = useState('');
+  const [ollamaChecking, setOllamaChecking] = useState(false);
   const [activeTab, setActiveTab] = useState('Scan');
   const [payloadHistory, setPayloadHistory] = useState([]);
   const extensionId = chrome?.runtime?.id || '<extension-id>';
@@ -78,17 +80,25 @@ const Popup = () => {
     (async () => {
       try {
         if (ollama) {
+          setOllamaChecking(true);
           ollama.setBaseUrl(ollamaUrl);
           ollama.setModel(ollamaModel);
           if (await ollama.checkAvailability()) {
             setOllamaAvailable(true);
             setOllamaError('');
+            setOllamaStatus('Ollama is reachable and ready for payload generation.');
           } else {
             setOllamaAvailable(false);
             setOllamaError(ollama?.getLastError?.() || '');
+            setOllamaStatus('Ollama is currently unavailable.');
           }
         }
-      } catch { setOllamaAvailable(false); }
+      } catch {
+        setOllamaAvailable(false);
+        setOllamaStatus('Ollama is currently unavailable.');
+      } finally {
+        setOllamaChecking(false);
+      }
     })();
   }, []);
 
@@ -107,6 +117,16 @@ const Popup = () => {
     chrome.storage.local.set({ auditLog: newLog });
   };
 
+  const modeLabel = dryRunMode ? 'Dry Run' : 'Live Mode';
+  const runButtonLabel = dryRunMode ? 'Preview Test' : 'Run Live Test';
+  const payloadModeSummary = dryRunMode
+    ? 'Preview only: clicking the action button will not inject payloads into the page.'
+    : 'Live execution: clicking the action button will inject the selected payloads into the chosen fields.';
+  const manualPayloadCount = textPayload
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean).length;
+
   const toggleSelection = (uid) => setSelectedIds(prev => {
     const s = new Set(prev);
     s.has(uid) ? s.delete(uid) : s.add(uid);
@@ -115,9 +135,10 @@ const Popup = () => {
   const selectAll = () => setSelectedIds(new Set(elements.map(e => e.uniqueId)));
   const clearSelection = () => setSelectedIds(new Set());
   const selectFilesOnly = () => setSelectedIds(new Set(elements.filter(e => e.type === 'file').map(e => e.uniqueId)));
+  const hasSelection = selectedIds.size > 0;
 
   const scanPage = async () => {
-    if (!isHostAllowed(currentUrl)) { alert('⚠️ Host not in allowlist. Add it in Settings first.'); return; }
+    if (!isHostAllowed(currentUrl)) { alert('Host not in allowlist. Add it in Settings first.'); return; }
     setLoading(true);
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -135,8 +156,17 @@ const Popup = () => {
   };
 
   const confirmAndExecute = (action, element, callback) => {
-    if (dryRunMode) { alert(`🔒 DRY RUN: Would execute ${action} on ${element.name || element.type}`); addToAuditLog(action, element, 'DRY_RUN'); return; }
-    setConfirmAction({ message: `Execute ${action} on "${element.name || element.type}"?`, onConfirm: callback });
+    if (dryRunMode) {
+      alert(
+        `Dry Run only.\n\nThis action was previewed but no payload was injected into the page.\n\nPlanned action: ${action}\nTarget: ${element.name || element.type}\n\nTurn off Dry Run Mode in Settings to perform a live test.`
+      );
+      addToAuditLog(action, element, 'DRY_RUN');
+      return;
+    }
+    setConfirmAction({
+      message: `Live test will inject payloads for ${action} on "${element.name || element.type}". Continue?`,
+      onConfirm: callback
+    });
   };
   const handleConfirm = () => { if (confirmAction?.onConfirm) confirmAction.onConfirm(); setConfirmAction(null); };
   const handleCancel = () => setConfirmAction(null);
@@ -171,14 +201,80 @@ const Popup = () => {
     if (!ollama) return;
     const vuln = DEFAULT_VULNS.find(v => v.key === selectedVuln);
     setLlmLoading(true);
+    setLlmExplanation('');
+    setOllamaStatus('');
     try {
       const s = await ollama.generatePayload({ elementType: 'input', elementName: '*', testType: 'Payload Generation', vulnerability: vuln?.label || selectedVuln });
       setLlmPayload(s.payload || '');
+      setLlmExplanation(s.explanation || '');
       setPayloadSource('llm');
+      setOllamaError('');
+      setOllamaStatus('Generated a payload suggestion for the currently selected vulnerability type.');
     } catch (e) {
       const msg = ollama?.getLastError?.() || e?.message || 'LLM unavailable.';
+      setLlmPayload('');
+      setLlmExplanation('');
       alert(msg); setOllamaError(msg);
     } finally { setLlmLoading(false); }
+  };
+
+  const checkRateLimitBeforeLiveAction = async (actionLabel) => {
+    try {
+      const result = await new Promise((resolve) => {
+        chrome.runtime.sendMessage({ action: 'checkRateLimit' }, (response) => {
+          resolve(response || null);
+        });
+      });
+
+      if (!result?.allowed) {
+        alert(
+          `Rate limit reached.\n\nThe extension allows up to 20 live actions per minute.\nPlease wait a moment before trying "${actionLabel}" again.`
+        );
+        return false;
+      }
+
+      return true;
+    } catch {
+      alert('Unable to verify the rate limit right now. Please try again.');
+      return false;
+    }
+  };
+
+  const getValidationHost = () => {
+    try {
+      return new URL(currentUrl).hostname || currentUrl;
+    } catch {
+      return currentUrl;
+    }
+  };
+
+  const validatePayloadsBeforeLiveAction = async (payloads, actionLabel) => {
+    for (const payload of payloads) {
+      try {
+        const result = await new Promise((resolve) => {
+          chrome.runtime.sendMessage(
+            {
+              action: 'validatePayload',
+              payload,
+              host: getValidationHost(),
+            },
+            (response) => resolve(response || null)
+          );
+        });
+
+        if (!result?.safe) {
+          alert(
+            `Payload blocked before ${actionLabel}.\n\nReason: ${result?.reason || 'Validation failed'}\n\nBlocked payload:\n${payload}`
+          );
+          return false;
+        }
+      } catch {
+        alert('Unable to validate the selected payloads right now. Please try again.');
+        return false;
+      }
+    }
+
+    return true;
   };
 
   const runVulnTest = async () => {
@@ -190,6 +286,20 @@ const Popup = () => {
     else if (payloadSource === 'llm' && llmPayload.trim()) payloads = [llmPayload.trim()];
 
     const executeAction = async () => {
+      const rateLimitOk = await checkRateLimitBeforeLiveAction(
+        payloadSource === 'file' && fileData ? 'file attachment' : `${vuln.label} test`
+      );
+      if (!rateLimitOk) return;
+
+      const needsPayloadValidation = payloadSource !== 'file' || !fileData;
+      if (needsPayloadValidation) {
+        const payloadsAreSafe = await validatePayloadsBeforeLiveAction(
+          payloads,
+          `${vuln.label} test`
+        );
+        if (!payloadsAreSafe) return;
+      }
+
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       const pingOk = await new Promise(resolve => {
         chrome.tabs.sendMessage(tab.id, { action: 'ping' }, resp => resolve(Boolean(resp?.ok)));
@@ -201,19 +311,19 @@ const Popup = () => {
         chrome.tabs.sendMessage(tab.id, { action: 'attachFile', fileData, uniqueIds: targetIds }, response => {
           if (response?.success) {
             const ok = response.results.filter(r => r.success).length;
-            alert(`✅ File attached to ${ok}/${response.results.length} fields`);
+            alert(`File attached to ${ok}/${response.results.length} fields`);
             addToAuditLog('ATTACH_FILE', { file: fileData.name, results: response.results }, 'SUCCESS');
             savePayloadHistory({ timestamp: new Date().toISOString(), vuln: vuln.key, payloadSource, payloads: [fileData.name], targets: targetIds });
-          } else { alert('❌ Failed to attach file'); addToAuditLog('ATTACH_FILE', { file: fileData.name }, 'FAILED'); }
+          } else { alert('Failed to attach file'); addToAuditLog('ATTACH_FILE', { file: fileData.name }, 'FAILED'); }
         });
       } else {
         chrome.tabs.sendMessage(tab.id, { action: 'executeVulnTest', vulnKey: vuln.key, payloads, uniqueIds: targetIds }, response => {
           if (response?.success) {
             const ok = response.results.filter(r => r.success).length;
-            alert(`✅ ${vuln.label} applied to ${ok}/${response.results.length} fields`);
+            alert(`${vuln.label} applied to ${ok}/${response.results.length} fields`);
             addToAuditLog('VULN_TEST', { vuln: vuln.key, results: response.results }, 'SUCCESS');
             savePayloadHistory({ timestamp: new Date().toISOString(), vuln: vuln.key, payloadSource, payloads, targets: targetIds });
-          } else { alert('❌ Failed to execute test'); addToAuditLog('VULN_TEST', { vuln: vuln.key }, 'FAILED'); }
+          } else { alert('Failed to execute test'); addToAuditLog('VULN_TEST', { vuln: vuln.key }, 'FAILED'); }
         });
       }
     };
@@ -258,6 +368,16 @@ const Popup = () => {
       return c;
     });
   };
+  const formatHistoryTime = (timestamp) => {
+    const diffMs = Date.now() - new Date(timestamp).getTime();
+    const diffMinutes = Math.max(0, Math.floor(diffMs / 60000));
+    if (diffMinutes < 1) return 'just now';
+    if (diffMinutes < 60) return `${diffMinutes}m ago`;
+    const diffHours = Math.floor(diffMinutes / 60);
+    if (diffHours < 24) return `${diffHours}h ago`;
+    const diffDays = Math.floor(diffHours / 24);
+    return `${diffDays}d ago`;
+  };
 
   const TABS = [
     { key: 'Scan', label: 'Scan' },
@@ -267,6 +387,20 @@ const Popup = () => {
   ];
 
   const hostAllowed = isHostAllowed(currentUrl);
+  const hasScannedElements = elements.length > 0;
+  const hasUsablePayload =
+    payloadSource === 'library' ||
+    (payloadSource === 'file' && Boolean(fileData)) ||
+    (payloadSource === 'text' && Boolean(textPayload.trim())) ||
+    (payloadSource === 'llm' && Boolean(llmPayload.trim()));
+  const runDisabledReason = !hostAllowed
+    ? 'Current host is not allowed'
+    : !hasScannedElements
+      ? 'Scan the page first'
+      : !hasUsablePayload
+        ? 'Choose or generate a payload first'
+        : '';
+  const canRunTest = hostAllowed && hasScannedElements && hasUsablePayload;
 
   return (
     <div className="si-root">
@@ -283,7 +417,7 @@ const Popup = () => {
         </div>
         <div className={`si-mode-badge ${dryRunMode ? 'si-mode-dry' : 'si-mode-live'}`}>
           <span className="si-mode-dot" />
-          {dryRunMode ? 'DRY RUN' : 'LIVE'}
+          {modeLabel}
         </div>
       </header>
 
@@ -315,6 +449,13 @@ const Popup = () => {
 
         {activeTab === 'Scan' && (
           <div className="si-pane">
+            <div className="si-workflow-note">
+              <div className="si-workflow-note-title">Quick flow</div>
+              <div className="si-workflow-note-text">
+                Scan the current page, pick the fields you want to target, then switch to the payload tab if you want to change the input source before running a test.
+              </div>
+            </div>
+
             <div className="si-action-bar">
               <button onClick={scanPage} disabled={loading} className="si-btn-primary">
                 {loading ? <><span className="si-spinner" />Scanning…</> : <><ScanIcon />Scan Page</>}
@@ -323,16 +464,20 @@ const Popup = () => {
               <select value={selectedVuln} onChange={e => setSelectedVuln(e.target.value)} className="si-select">
                 {DEFAULT_VULNS.map(v => <option key={v.key} value={v.key}>{v.label}</option>)}
               </select>
-              <button onClick={runVulnTest} disabled={!hostAllowed} className="si-btn-accent">
-                <RocketIcon />Run Test
+              <button onClick={runVulnTest} disabled={!canRunTest} className="si-btn-accent" title={runDisabledReason}>
+                <RocketIcon />{runButtonLabel}
               </button>
+            </div>
+
+            <div className={`si-hint ${dryRunMode ? 'si-hint--warn' : 'si-hint--danger'}`}>
+              <strong>{modeLabel}:</strong> {payloadModeSummary}
             </div>
 
             {elements.length > 0 && (
               <div className="si-stats-bar">
                 <span className="si-stats-label">
                   {elements.length} element{elements.length !== 1 ? 's' : ''}
-                  {selectedIds.size > 0 && <span className="si-stats-sel"> · {selectedIds.size} selected</span>}
+                  {hasSelection && <span className="si-stats-sel"> · {selectedIds.size} selected</span>}
                 </span>
                 <div className="si-stats-chips">
                   <button onClick={selectAll} className="si-chip">All</button>
@@ -342,11 +487,17 @@ const Popup = () => {
               </div>
             )}
 
+            {elements.length > 0 && !hasSelection && (
+              <div className="si-selection-hint">
+                No fields selected yet. Click one or more cards below to choose where the test should run.
+              </div>
+            )}
+
             {elements.length === 0 && !loading && (
               <div className="si-empty">
                 <div className="si-empty-icon">🔍</div>
-                <div className="si-empty-title">Ready to scan</div>
-                <div className="si-empty-sub">Click "Scan Page" to discover all form inputs on this page</div>
+                <div className="si-empty-title">No scan results yet</div>
+                <div className="si-empty-sub">Click "Scan Page" to discover the form fields available on the current page before choosing test targets.</div>
               </div>
             )}
 
@@ -389,6 +540,17 @@ const Popup = () => {
         {activeTab === 'Payloads' && (
           <div className="si-pane">
             <div className="si-pane-title">Payload Source</div>
+            <div className={`si-hint ${dryRunMode ? 'si-hint--warn' : 'si-hint--danger'}`}>
+              {dryRunMode
+                ? 'Dry Run is ON. You can scan, select fields, and preview actions safely, but no payload will be inserted until Live Mode is enabled.'
+                : 'Live Mode is ON. The selected payload source will be used to inject values into the chosen page fields after confirmation.'}
+            </div>
+            <div className="si-payload-meta">
+              <span className="si-payload-meta-item">Selected source: <strong>{payloadSource.toUpperCase()}</strong></span>
+              {payloadSource === 'text' && <span className="si-payload-meta-item">{manualPayloadCount} custom payload{manualPayloadCount === 1 ? '' : 's'}</span>}
+              {payloadSource === 'file' && fileName && <span className="si-payload-meta-item">Loaded file: <code>{fileName}</code></span>}
+              {payloadSource === 'llm' && llmPayload && <span className="si-payload-meta-item">Generated payload ready</span>}
+            </div>
 
             <label className={`si-source-card ${payloadSource === 'library' ? 'si-source-card--active' : ''}`}>
               <input type="radio" name="ps" value="library" checked={payloadSource === 'library'} onChange={e => setPayloadSource(e.target.value)} className="si-radio" />
@@ -426,6 +588,9 @@ const Popup = () => {
                   disabled={payloadSource !== 'text'}
                   className="si-textarea"
                 />
+                <div className="si-source-footnote">
+                  Each non-empty line is treated as a separate payload when you run the test.
+                </div>
               </div>
             </label>
 
@@ -442,10 +607,18 @@ const Popup = () => {
                 {ollamaAvailable && (
                   <div className="si-llm-row">
                     <button onClick={fetchLlmSuggestion} disabled={llmLoading} className="si-btn-sm-primary">
-                      {llmLoading ? '⏳ Generating…' : '✨ Generate'}
+                      {llmLoading ? 'Generating...' : 'Generate Suggestion'}
                     </button>
-                    {llmPayload && (
-                      <textarea rows={2} value={llmPayload} readOnly className="si-textarea si-textarea--compact" />
+                  </div>
+                )}
+                {llmPayload && (
+                  <div className="si-llm-result">
+                    <div className="si-llm-result-label">Generated payload</div>
+                    <textarea rows={2} value={llmPayload} readOnly className="si-textarea si-textarea--compact" />
+                    {llmExplanation && (
+                      <div className="si-source-footnote">
+                        <strong>Why this was suggested:</strong> {llmExplanation}
+                      </div>
                     )}
                   </div>
                 )}
@@ -464,6 +637,12 @@ const Popup = () => {
         {activeTab === 'History' && (
           <div className="si-pane">
             <div className="si-pane-title">Payload History</div>
+            <div className="si-workflow-note">
+              <div className="si-workflow-note-title">Reuse past payloads</div>
+              <div className="si-workflow-note-text">
+                History saves the most recent payload sets so you can quickly reinsert, copy, or compare what you tried during testing.
+              </div>
+            </div>
             {payloadHistory.length === 0 ? (
               <div className="si-empty">
                 <div className="si-empty-icon">📋</div>
@@ -478,7 +657,8 @@ const Popup = () => {
                       <div className="si-history-tags">
                         <span className="si-history-vuln">{h.vuln || 'custom'}</span>
                         <span className="si-history-src">{h.payloadSource}</span>
-                        <span className="si-history-time">{new Date(h.timestamp).toLocaleString()}</span>
+                        <span className="si-history-time">{formatHistoryTime(h.timestamp)}</span>
+                        <span className="si-history-count">{(h.payloads || []).length} payload{(h.payloads || []).length === 1 ? '' : 's'}</span>
                       </div>
                       <div className="si-history-actions">
                         <button onClick={() => insertHistoryEntry(h)} className="si-chip si-chip--primary">Insert</button>
@@ -500,27 +680,38 @@ const Popup = () => {
         {activeTab === 'Settings' && (
           <div className="si-pane">
             <div className="si-pane-title">Settings</div>
+            <div className="si-workflow-note">
+              <div className="si-workflow-note-title">Safe testing setup</div>
+              <div className="si-workflow-note-text">
+                Use this tab to control whether actions are previewed or executed live, manage allowed targets, and export the activity log for your test session.
+              </div>
+            </div>
 
             <div className="si-card">
               <div className="si-card-row">
                 <div>
                   <div className="si-card-label">Dry Run Mode</div>
-                  <div className="si-card-desc">Simulate tests without modifying the page</div>
+                  <div className="si-card-desc">Preview actions safely without injecting any payload into the page</div>
                 </div>
                 <button onClick={toggleDryRun} className={`si-toggle ${dryRunMode ? 'si-toggle--on' : 'si-toggle--off'}`}>
                   <span className={`si-toggle-thumb ${dryRunMode ? 'si-toggle-thumb--on' : ''}`} />
                 </button>
               </div>
+              {dryRunMode && (
+                <div className="si-alert si-alert--warn">
+                  Dry Run is active. Scan and selection still work, but clicking the action button only previews what would happen.
+                </div>
+              )}
               {!dryRunMode && (
                 <div className="si-alert si-alert--danger">
-                  ⚠ Live mode — payloads will be injected into real page inputs
+                  Live Mode is active. Selected payloads will be injected into real page inputs after you confirm.
                 </div>
               )}
             </div>
 
             <div className="si-card">
               <div className="si-card-label">Host Allowlist</div>
-              <div className="si-card-desc">Only test hosts in this list (use * for all)</div>
+              <div className="si-card-desc">Only pages matching these hosts can be scanned and tested. Use * only in controlled lab environments.</div>
               <div className="si-allowlist-input">
                 <input
                   type="text"
@@ -545,7 +736,7 @@ const Popup = () => {
             <div className="si-card si-card-row">
               <div>
                 <div className="si-card-label">Audit Log</div>
-                <div className="si-card-desc">{auditLog.length} entries recorded</div>
+                <div className="si-card-desc">{auditLog.length} entries recorded for this browser profile</div>
               </div>
               <button onClick={exportAuditLog} className="si-btn-outline">
                 📥 Export
@@ -556,12 +747,19 @@ const Popup = () => {
               <div className="si-card-row">
                 <div>
                   <div className="si-card-label">Ollama LLM</div>
-                  <div className="si-card-desc">Local AI for payload generation</div>
+                  <div className="si-card-desc">Local AI connection used to generate payload suggestions inside the popup</div>
                 </div>
                 <span className={`si-status-pill ${ollamaAvailable ? 'si-status-pill--on' : 'si-status-pill--off'}`}>
-                  {ollamaAvailable ? '● Online' : '○ Offline'}
+                  {ollamaChecking ? 'Checking' : ollamaAvailable ? '● Online' : '○ Offline'}
                 </span>
               </div>
+              {(!ollamaAvailable || ollamaChecking || !ollamaStatus) && (
+                <div className={`si-hint ${ollamaChecking ? 'si-hint--warn' : ollamaAvailable ? 'si-hint--success' : 'si-hint--warn'}`}>
+                  {ollamaChecking
+                    ? 'Checking the local Ollama service...'
+                    : ollamaStatus || 'Set the Ollama URL and model, then test the connection from this panel.'}
+                </div>
+              )}
               <div className="si-ollama-fields">
                 <input type="text" value={ollamaUrl} onChange={e => setOllamaUrl(e.target.value)} placeholder="http://127.0.0.1:11434" className="si-input si-input--mono" />
                 <input type="text" value={ollamaModel} onChange={e => setOllamaModel(e.target.value)} placeholder="llama3" className="si-input si-input--mono" />
@@ -569,15 +767,22 @@ const Popup = () => {
                   className="si-btn-outline"
                   onClick={async () => {
                     if (!ollama) return;
-                    ollama.setBaseUrl(ollamaUrl);
-                    ollama.setModel(ollamaModel);
-                    const ok = await ollama.checkAvailability();
-                    setOllamaAvailable(ok);
-                    setOllamaError(ollama.getLastError?.() || '');
-                    setOllamaStatus(ok ? '✅ Connected successfully' : '');
+                    try {
+                      setOllamaChecking(true);
+                      setOllamaStatus('');
+                      ollama.setBaseUrl(ollamaUrl);
+                      ollama.setModel(ollamaModel);
+                      const ok = await ollama.checkAvailability();
+                      setOllamaAvailable(ok);
+                      setOllamaError(ollama.getLastError?.() || '');
+                      setOllamaStatus(ok ? 'Connection successful. You can now generate payload suggestions from the Payloads tab.' : 'Connection failed. Review the message below and verify your Ollama service.');
+                    } finally {
+                      setOllamaChecking(false);
+                    }
                   }}
+                  disabled={ollamaChecking}
                 >
-                  Test Connection
+                  {ollamaChecking ? 'Checking...' : 'Test Connection'}
                 </button>
               </div>
               {ollamaAvailable && ollamaStatus && (
@@ -612,7 +817,7 @@ const Popup = () => {
       {confirmAction && (
         <div className="si-modal-overlay">
           <div className="si-modal">
-            <div className="si-modal-icon">⚠️</div>
+            <div className="si-modal-icon"></div>
             <h3 className="si-modal-title">Confirm Action</h3>
             <p className="si-modal-msg">{confirmAction.message}</p>
             <div className="si-modal-btns">

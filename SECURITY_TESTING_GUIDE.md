@@ -69,13 +69,13 @@ SecTest Pro is a professional Chrome MV3 extension designed for security testing
    - Add domains you want to test (e.g., `localhost`, `dvwa`)
    - Remove domains you don't need
 4. Set Dry Run Mode preference:
-   - ✅ Enabled (default): Safe simulation mode
-   - ❌ Disabled: Live testing with confirmation dialogs
+   - Enabled (default): Safe simulation mode
+   - Disabled: Live testing with confirmation dialogs
 
 ### Scanning a Page
 1. Navigate to your target web application
 2. Click the extension icon
-3. Click "🔍 Scan Page"
+3. Click "Scan Page"
 4. Review the enumerated form elements
 
 ### Performing Actions
@@ -182,7 +182,7 @@ If rate limit is reached:
 
 ## Security Considerations
 
-### ⚠️ Important Warnings
+### Important Warnings
 
 1. **Authorization Required**: Only test applications you own or have explicit permission to test
 2. **Production Systems**: Never test production systems without proper authorization
@@ -191,14 +191,14 @@ If rate limit is reached:
 
 ### Safe Usage Guidelines
 
-✅ **DO:**
+**DO:**
 - Test in isolated lab environments
 - Use Dry Run mode for exploration
 - Keep audit logs for accountability
 - Add only authorized hosts to allowlist
 - Document all testing activities
 
-❌ **DON'T:**
+**DON'T:**
 - Test production systems without authorization
 - Disable guardrails on untrusted sites
 - Share credentials or sensitive data
