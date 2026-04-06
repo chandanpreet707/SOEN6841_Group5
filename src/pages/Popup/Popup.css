@@ -1174,3 +1174,63 @@ body {
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--si-slate-300); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--si-slate-400); }
+
+/* ── Allowlist improvements (IECMXOJ-512) ───────────────────────────────── */
+
+.si-allowlist-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--si-slate-50);
+  border: 1px solid var(--si-slate-100);
+  border-radius: var(--r-sm);
+  padding: 6px 10px;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+/* Subtle hover so the row feels interactive */
+.si-allowlist-item:hover {
+  background: var(--si-brand-50);
+  border-color: var(--si-brand-100);
+}
+
+/* Highlight the wildcard entry with a warning tint */
+.si-allowlist-item--wildcard {
+  background: #fffbeb;
+  border-color: #fde68a;
+}
+
+.si-allowlist-item--wildcard .si-host-code {
+  color: #92400e;
+}
+
+/* ── Settings saved confirmation (IECMXOJ-512) ──────────────────────────── */
+
+.si-settings-saved {
+  font-size: 11px;
+  color: var(--si-green-700);
+  background: var(--si-green-50);
+  border: 1px solid #bbf7d0;
+  border-radius: var(--r);
+  padding: 6px 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  animation: si-fadein 0.2s ease;
+}
+
+/* ── Disabled export button state (IECMXOJ-512) ─────────────────────────── */
+
+.si-btn-outline:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* ── Ollama reset button spacing (IECMXOJ-512) ──────────────────────────── */
+
+.si-ollama-fields .si-btn-ghost {
+  margin-top: 2px;
+  width: 100%;
+  justify-content: center;
+}
