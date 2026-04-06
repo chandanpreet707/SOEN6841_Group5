@@ -21,6 +21,18 @@ const rateLimiter = {
   },
 };
 
+/**
+ * Payload validator.
+ * Checks that a payload string does not contain dangerous patterns
+ * before it is dispatched to the content script.
+ *
+ * Sanctioned lab hosts (localhost, dvwa, etc.) bypass pattern checks
+ * so testers can run full OWASP payloads without interference.
+ *
+ * @typedef  {Object}  ValidationResult
+ * @property {boolean} safe   - Whether the payload passed all checks.
+ * @property {string}  reason - Human-readable explanation.
+ */
 const payloadValidator = {
   dangerousPatterns: [
     /<script[\s\S]*?>/i,
