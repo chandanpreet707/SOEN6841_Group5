@@ -21,6 +21,18 @@ const rateLimiter = {
   },
 };
 
+/**
+ * Payload validator.
+ * Checks that a payload string does not contain dangerous patterns
+ * before it is dispatched to the content script.
+ *
+ * Sanctioned lab hosts (localhost, dvwa, etc.) bypass pattern checks
+ * so testers can run full OWASP payloads without interference.
+ *
+ * @typedef  {Object}  ValidationResult
+ * @property {boolean} safe   - Whether the payload passed all checks.
+ * @property {string}  reason - Human-readable explanation.
+ */
 const payloadValidator = {
   dangerousPatterns: [
     /<script[\s\S]*?>/i,
@@ -87,18 +99,21 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 });
 
 chrome.runtime.onInstalled.addListener(() => {
-  chrome.storage.local.get(
-    ['allowlist', 'dryRunMode', 'auditLog'],
-    (result) => {
-      if (!result.allowlist) {
-        chrome.storage.local.set({
-          allowlist: ['*'],
-          dryRunMode: true,
-          auditLog: [],
-        });
-      }
-    }
-  );
+  chrome.storage.local.get(['allowlist', 'dryRunMode', 'auditLog'], (result) => {
+    const defaults = {};
+    if (!result.allowlist)              defaults.allowlist   = ['*'];
+    if (result.dryRunMode === undefined) defaults.dryRunMode = true;
+    if (!result.auditLog)              defaults.auditLog    = [];
+
+    chrome.storage.local.set(defaults, () => {
+      // Explicitly set badge after defaults are written so the badge
+      // reflects reality on first install rather than waiting for a
+      // storage.onChanged event (which does not fire for the initial set).
+      const isDry = result.dryRunMode !== false;
+      chrome.action.setBadgeText({ text: isDry ? 'DRY' : 'LIVE' });
+      chrome.action.setBadgeBackgroundColor({ color: isDry ? '#FF9800' : '#4CAF50' });
+    });
+  });
 });
 
 chrome.storage.local.get(['dryRunMode'], (result) => {
