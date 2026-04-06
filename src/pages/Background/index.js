@@ -21,6 +21,18 @@ const rateLimiter = {
   },
 };
 
+/**
+ * Payload validator.
+ * Checks that a payload string does not contain dangerous patterns
+ * before it is dispatched to the content script.
+ *
+ * Sanctioned lab hosts (localhost, dvwa, etc.) bypass pattern checks
+ * so testers can run full OWASP payloads without interference.
+ *
+ * @typedef  {Object}  ValidationResult
+ * @property {boolean} safe   - Whether the payload passed all checks.
+ * @property {string}  reason - Human-readable explanation.
+ */
 const payloadValidator = {
   dangerousPatterns: [
     /<script[\s\S]*?>/i,
@@ -68,17 +80,26 @@ const payloadValidator = {
 };
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+
+  // ── Rate limit ──────────────────────────────────────────────────────────
+  // Called before every live action from the Popup.
+  // In DRY mode the Popup never reaches this check (it short-circuits
+  // in dryRunGuard), but we keep the check here as a safety net.
   if (request.action === 'checkRateLimit') {
     const canPerform = rateLimiter.canPerformAction();
-    const remaining = rateLimiter.getRemainingActions();
+    const remaining  = rateLimiter.getRemainingActions();
     sendResponse({
       allowed: canPerform,
-      remaining: remaining,
+      remaining,
       message: canPerform ? 'Action allowed' : 'Rate limit exceeded',
     });
     return true;
   }
 
+  // ── Payload validation ──────────────────────────────────────────────────
+  // Runs AFTER the rate-limit check, BEFORE the content script receives
+  // the payload. Sanctioned lab hosts bypass dangerous-pattern filtering
+  // so full OWASP payloads can be used in controlled environments.
   if (request.action === 'validatePayload') {
     const validation = payloadValidator.isSafe(request.payload, request.host);
     sendResponse(validation);
@@ -87,18 +108,21 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 });
 
 chrome.runtime.onInstalled.addListener(() => {
-  chrome.storage.local.get(
-    ['allowlist', 'dryRunMode', 'auditLog'],
-    (result) => {
-      if (!result.allowlist) {
-        chrome.storage.local.set({
-          allowlist: ['*'],
-          dryRunMode: true,
-          auditLog: [],
-        });
-      }
-    }
-  );
+  chrome.storage.local.get(['allowlist', 'dryRunMode', 'auditLog'], (result) => {
+    const defaults = {};
+    if (!result.allowlist)               defaults.allowlist   = ['*'];
+    if (result.dryRunMode === undefined)  defaults.dryRunMode = true;
+    if (!result.auditLog)                defaults.auditLog    = [];
+
+    chrome.storage.local.set(defaults, () => {
+      // Explicitly set badge after defaults are written so the badge
+      // reflects reality on first install rather than waiting for a
+      // storage.onChanged event (which does not fire for the initial set).
+      const isDry = result.dryRunMode !== false;
+      chrome.action.setBadgeText({ text: isDry ? 'DRY' : 'LIVE' });
+      chrome.action.setBadgeBackgroundColor({ color: isDry ? '#FF9800' : '#4CAF50' });
+    });
+  });
 });
 
 chrome.storage.local.get(['dryRunMode'], (result) => {
