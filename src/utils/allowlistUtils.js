@@ -15,16 +15,28 @@ export function normalizeHost(raw) {
 
 /**
  * Returns true if `url` is covered by at least one entry in `allowlist`.
- * Supports exact matches and the wildcard "*".
+ * Supports:
+ *  - exact hostname match          ("dvwa")
+ *  - global wildcard               ("*")
+ *  - leading-wildcard subdomain    ("*.example.com")
  *
- * @param {string}   url       - Full page URL
- * @param {string[]} allowlist - Array of allowed host strings
+ * @param {string}   url
+ * @param {string[]} allowlist
  */
 export function isHostAllowed(url, allowlist = []) {
   try {
     const hostname = normalizeHost(new URL(url).hostname);
     if (allowlist.includes('*')) return true;
-    return allowlist.some((entry) => hostname.includes(normalizeHost(entry)));
+
+    return allowlist.some((entry) => {
+      const norm = normalizeHost(entry);
+      // Leading-wildcard: *.example.com matches sub.example.com
+      if (norm.startsWith('*.')) {
+        const suffix = norm.slice(2); // "example.com"
+        return hostname === suffix || hostname.endsWith('.' + suffix);
+      }
+      return hostname.includes(norm);
+    });
   } catch {
     return false;
   }
