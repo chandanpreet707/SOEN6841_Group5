@@ -6,11 +6,20 @@
 /**
  * Normalise a raw hostname string:
  *  - lowercases
- *  - strips trailing port (e.g. "localhost:3000" → "localhost")
+ *  - strips trailing port  (e.g. "localhost:3000"  → "localhost")
+ *  - strips trailing slash (e.g. "example.com/"    → "example.com")
+ *  - strips http(s):// prefix if user accidentally pastes a full URL
  */
 export function normalizeHost(raw) {
   if (!raw) return '';
-  return String(raw).toLowerCase().replace(/:\d+$/, '').trim();
+  let s = String(raw).toLowerCase().trim();
+  // Strip protocol prefix
+  s = s.replace(/^https?:\/\//, '');
+  // Strip port suffix
+  s = s.replace(/:\d+$/, '');
+  // Strip trailing slash
+  s = s.replace(/\/$/, '');
+  return s;
 }
 
 /**
@@ -32,7 +41,7 @@ export function isHostAllowed(url, allowlist = []) {
       const norm = normalizeHost(entry);
       // Leading-wildcard: *.example.com matches sub.example.com
       if (norm.startsWith('*.')) {
-        const suffix = norm.slice(2); // "example.com"
+        const suffix = norm.slice(2);
         return hostname === suffix || hostname.endsWith('.' + suffix);
       }
       return hostname.includes(norm);
